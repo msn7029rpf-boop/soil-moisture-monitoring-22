@@ -1,4 +1,4 @@
-// Real-time Soil Moisture Dashboard Logic
+// Real-time Air Humidity & Temperature Dashboard Logic (DHT22 - 2 Metrics Only)
 let ws = null;
 let activeZoneId = 'zone-1';
 let sensors = [];
@@ -14,7 +14,6 @@ const gaugeValue = document.getElementById('gaugeValue');
 const zoneLocationLabel = document.getElementById('zoneLocationLabel');
 const soilStatusBadge = document.getElementById('soilStatusBadge');
 const tempVal = document.getElementById('tempVal');
-const humVal = document.getElementById('humVal');
 const pumpToggleBtn = document.getElementById('pumpToggleBtn');
 const pumpSubText = document.getElementById('pumpSubText');
 const logsTableBody = document.getElementById('logsTableBody');
@@ -31,7 +30,6 @@ document.addEventListener('DOMContentLoaded', () => {
   connectWebSocket();
   setupEventListeners();
 
-  // Fallback timer: reload data via REST API if WebSocket is connecting/disconnected
   setInterval(() => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       fetchInitialData();
@@ -39,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 5000);
 });
 
-// Fetch initial data via REST API (Instant load fallback)
+// Fetch initial data via REST API
 async function fetchInitialData() {
   try {
     const [currRes, histRes] = await Promise.all([
@@ -164,7 +162,7 @@ function renderZoneTabs() {
     const btn = document.createElement('button');
     btn.className = `zone-btn ${sensor.id === activeZoneId ? 'active' : ''}`;
     btn.innerHTML = `
-      <span>🌱 ${sensor.name}</span>
+      <span>🍃 ${sensor.name}</span>
       <span class="zone-badge" style="background: rgba(255,255,255,0.1);">${sensor.id}</span>
     `;
     btn.onclick = () => switchZone(sensor.id);
@@ -179,7 +177,7 @@ function switchZone(zoneId) {
   updateDashboardUI();
 }
 
-// Update UI based on active zone data
+// Update UI based on active zone data (2 Metrics Only)
 function updateDashboardUI() {
   const currentSensor = sensors.find(s => s.id === activeZoneId) || sensors[0];
   if (currentSensor) {
@@ -197,7 +195,6 @@ function updateDashboardUI() {
     soilStatusBadge.className = 'status-pill OPTIMAL';
     soilStatusBadge.innerText = 'NO DATA';
     tempVal.innerText = '-- °C';
-    humVal.innerText = '-- %';
     setGaugePercent(0);
   }
 
@@ -206,26 +203,23 @@ function updateDashboardUI() {
   renderLogsTable();
 }
 
-// Update Gauge & Metrics
+// Update Gauge & Metrics (2 Metrics Only: Air Humidity & Air Temp)
 function updateGaugeAndMetrics(log) {
-  const val = log.moisture;
-  gaugeValue.innerText = val.toFixed(1);
+  // Metric 1: Air Humidity (% RH)
+  const airHum = log.humidity !== undefined && log.humidity !== null ? log.humidity : log.moisture;
+  gaugeValue.innerText = airHum.toFixed(1);
 
-  // Set Status Badge
+  // Status Badge for Air Humidity
   soilStatusBadge.className = `status-pill ${log.status}`;
-  if (log.status === 'DRY') soilStatusBadge.innerText = '⚠️ แห้งเกินไป (DRY)';
-  else if (log.status === 'OPTIMAL') soilStatusBadge.innerText = '✅ ชุ่มชื้นพอดี (OPTIMAL)';
-  else if (log.status === 'WET') soilStatusBadge.innerText = '💧 ชื้นมาก (WET)';
+  if (log.status === 'DRY') soilStatusBadge.innerText = '⚠️ อากาศแห้งเกินไป (DRY)';
+  else if (log.status === 'OPTIMAL') soilStatusBadge.innerText = '🍃 ความชื้นเหมาะสม (OPTIMAL)';
+  else soilStatusBadge.innerText = '☁️ ความชื้นสูงมาก (HUMID)';
 
-  // Set gauge arc percentage (283 is total perimeter of arc)
-  setGaugePercent(val);
+  setGaugePercent(airHum);
 
-  // Set Temp & Humidity
+  // Metric 2: Air Temperature (°C)
   if (log.temperature !== null && log.temperature !== undefined) {
     tempVal.innerText = `${log.temperature.toFixed(1)} °C`;
-  }
-  if (log.humidity !== null && log.humidity !== undefined) {
-    humVal.innerText = `${log.humidity.toFixed(1)} %`;
   }
 }
 
@@ -237,11 +231,11 @@ function setGaugePercent(percent) {
   gaugePath.style.strokeDashoffset = offset;
 }
 
-// Update Pump UI
+// Update Misting / Fan Status UI
 function updatePumpStatusUI(status) {
   const isON = status === 'ON';
   pumpToggleBtn.checked = isON;
-  pumpSubText.innerText = isON ? 'สถานะ: กำลังทำงาน 🟢 (PUMPING)' : 'สถานะ: ปิดอยู่ ⚪ (OFF)';
+  pumpSubText.innerText = isON ? 'สถานะพ่นหมอก/พัดลม: กำลังทำงาน 🟢 (MISTING ON)' : 'สถานะพ่นหมอก/พัดลม: ปิดอยู่ ⚪ (OFF)';
   pumpSubText.style.color = isON ? '#10b981' : '#94a3b8';
 }
 
@@ -249,10 +243,9 @@ function updatePumpStatusUI(status) {
 function initChart() {
   const ctx = document.getElementById('moistureChart').getContext('2d');
   
-  // Custom Gradient for Chart fill
   const gradientMoisture = ctx.createLinearGradient(0, 0, 0, 300);
-  gradientMoisture.addColorStop(0, 'rgba(16, 185, 129, 0.4)');
-  gradientMoisture.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+  gradientMoisture.addColorStop(0, 'rgba(6, 182, 212, 0.4)');
+  gradientMoisture.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
 
   chartInstance = new Chart(ctx, {
     type: 'line',
@@ -260,19 +253,19 @@ function initChart() {
       labels: [],
       datasets: [
         {
-          label: 'ความชื้นในดิน (%)',
+          label: '1. ความชื้นในอากาศ (%)',
           data: [],
-          borderColor: '#10b981',
+          borderColor: '#06b6d4',
           backgroundColor: gradientMoisture,
           borderWidth: 3,
           fill: true,
           tension: 0.35,
           pointRadius: 4,
           pointHoverRadius: 7,
-          pointBackgroundColor: '#10b981'
+          pointBackgroundColor: '#06b6d4'
         },
         {
-          label: 'อุณหภูมิดิน (°C)',
+          label: '2. อุณหภูมิอากาศ (°C)',
           data: [],
           borderColor: '#f59e0b',
           borderWidth: 2,
@@ -311,7 +304,7 @@ function initChart() {
         y: {
           min: 0,
           max: 100,
-          title: { display: true, text: 'ความชื้น (%)', color: '#10b981' },
+          title: { display: true, text: 'ความชื้นอากาศ (%)', color: '#06b6d4' },
           grid: { color: 'rgba(255, 255, 255, 0.05)' },
           ticks: { color: '#64748b' }
         },
@@ -319,7 +312,7 @@ function initChart() {
           position: 'right',
           min: 10,
           max: 50,
-          title: { display: true, text: 'อุณหภูมิ (°C)', color: '#f59e0b' },
+          title: { display: true, text: 'อุณหภูมิอากาศ (°C)', color: '#f59e0b' },
           grid: { drawOnChartArea: false },
           ticks: { color: '#f59e0b' }
         }
@@ -332,7 +325,7 @@ function initChart() {
 function updateChartData(logs) {
   if (!chartInstance) return;
   const labels = logs.map(l => formatTime(l.timestamp));
-  const moistureData = logs.map(l => l.moisture);
+  const moistureData = logs.map(l => l.humidity !== undefined && l.humidity !== null ? l.humidity : l.moisture);
   const tempData = logs.map(l => l.temperature || 0);
 
   chartInstance.data.labels = labels;
@@ -345,17 +338,17 @@ function updateChartData(logs) {
 function appendChartData(log) {
   if (!chartInstance) return;
   const timeStr = formatTime(log.timestamp);
+  const airHum = log.humidity !== undefined && log.humidity !== null ? log.humidity : log.moisture;
   chartInstance.data.labels.push(timeStr);
-  chartInstance.data.datasets[0].data.push(log.moisture);
+  chartInstance.data.datasets[0].data.push(airHum);
   chartInstance.data.datasets[1].data.push(log.temperature || 0);
 
-  // Keep max 20 points in chart view
   if (chartInstance.data.labels.length > 20) {
     chartInstance.data.labels.shift();
     chartInstance.data.datasets[0].data.shift();
     chartInstance.data.datasets[1].data.shift();
   }
-  chartInstance.update('none'); // smooth update
+  chartInstance.update('none');
 }
 
 // Calculate Stats
@@ -370,7 +363,7 @@ function updateStats() {
     return;
   }
 
-  const values = zoneLogs.map(l => l.moisture);
+  const values = zoneLogs.map(l => l.humidity !== undefined && l.humidity !== null ? l.humidity : l.moisture);
   const sum = values.reduce((a, b) => a + b, 0);
   const avg = (sum / values.length).toFixed(1);
   const min = Math.min(...values).toFixed(1);
@@ -381,24 +374,24 @@ function updateStats() {
   statMax.innerText = `${max} %`;
 }
 
-// Render Logs Table
+// Render Logs Table (2 Metrics Only)
 function renderLogsTable() {
   const zoneLogs = logsHistory.filter(l => l.sensor_id === activeZoneId).reverse();
   logsTableBody.innerHTML = '';
 
   if (zoneLogs.length === 0) {
-    logsTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--text-dim);">ยังไม่มีประวัติบันทึกในโซนนี้</td></tr>`;
+    logsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--text-dim);">ยังไม่มีประวัติบันทึกในโซนนี้</td></tr>`;
     return;
   }
 
   zoneLogs.slice(0, 50).forEach(log => {
     const tr = document.createElement('tr');
+    const airHum = log.humidity !== undefined && log.humidity !== null ? log.humidity : log.moisture;
     tr.innerHTML = `
       <td style="font-family: monospace;">${formatDateTime(log.timestamp)}</td>
       <td><span style="font-weight:600; color: var(--primary-teal);">${log.sensor_id}</span></td>
-      <td><strong style="font-size: 1rem;">${log.moisture.toFixed(1)}%</strong></td>
-      <td>${log.temperature ? log.temperature.toFixed(1) + ' °C' : '-'}</td>
-      <td>${log.humidity ? log.humidity.toFixed(1) + ' %' : '-'}</td>
+      <td><strong style="font-size: 1rem; color: var(--primary-cyan);">${airHum.toFixed(1)}% RH</strong></td>
+      <td><strong style="font-size: 1rem; color: #f59e0b;">${log.temperature ? log.temperature.toFixed(1) + ' °C' : '-'}</strong></td>
       <td><span class="status-pill ${log.status}" style="padding: 2px 10px; font-size: 0.75rem;">${log.status}</span></td>
     `;
     logsTableBody.appendChild(tr);
@@ -419,10 +412,10 @@ function setupEventListeners() {
       });
       const data = await res.json();
       if (data.success) {
-        showToast(`สั่งเปลี่ยนสวิตช์ปั๊มน้ำเป็น ${action} เรียบร้อย`, 'success');
+        showToast(`สั่งเปลี่ยนสวิตช์ระบบพ่นหมอก/พัดลมเป็น ${action} เรียบร้อย`, 'success');
       }
     } catch (err) {
-      console.error('Error toggling pump:', err);
+      console.error('Error toggling misting system:', err);
       showToast('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์เปลี่ยนปั๊มได้', 'error');
     }
   });
@@ -447,16 +440,17 @@ function exportCSV() {
     return;
   }
 
-  let csv = 'Timestamp,Sensor_ID,Moisture(%),Temperature(C),Humidity(%),Status\n';
+  let csv = 'Timestamp,Sensor_ID,Air_Humidity(%),Air_Temperature(C),Status\n';
   zoneLogs.forEach(l => {
-    csv += `"${l.timestamp}","${l.sensor_id}",${l.moisture},${l.temperature || ''},${l.humidity || ''},"${l.status}"\n`;
+    const airHum = l.humidity !== undefined && l.humidity !== null ? l.humidity : l.moisture;
+    csv += `"${l.timestamp}","${l.sensor_id}",${airHum},${l.temperature || ''},"${l.status}"\n`;
   });
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `moisture_logs_${activeZoneId}_${Date.now()}.csv`;
+  a.download = `air_climate_dht22_${activeZoneId}_${Date.now()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
   showToast('ดาวน์โหลดไฟล์ CSV เรียบร้อยแล้ว', 'success');

@@ -1,25 +1,24 @@
 // ======================================================
-// ESP32 + DHT22 + Soil Moisture Sensor Arduino Sketch
+// ESP32 + DHT22 Air Humidity & Temperature Client
 // ======================================================
-// การติดตั้ง Library ใน Arduino IDE:
-// 1. DHT sensor library by Adafruit
-// 2. ArduinoJson by Benoit Blanchon (เวอร์ชัน 6.x)
+// Library Required:
+// 1. DHT sensor library (by Adafruit)
+// 2. ArduinoJson (by Benoit Blanchon v6.x)
 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "DHT.h"
 
-// 1. ตั้งค่า Wi-Fi และ Backend URL
+// 1. ตั้งค่า Wi-Fi และ Backend Cloud URL
 const char* ssid = "YOUR_WIFI_SSID";             // ชื่อ Wi-Fi ของคุณ
 const char* password = "YOUR_WIFI_PASSWORD";     // รหัสผ่าน Wi-Fi
-const char* serverUrl = "http://192.168.1.50:3000/api/moisture"; // IP คอมพิวเตอร์หรือ Cloud URL
+const char* serverUrl = "https://soil-moisture-monitoring-22.onrender.com/api/moisture"; // Cloud Render URL
 
-// 2. ตั้งค่าต่อขาอุปกรณ์ (Pin Mapping)
+// 2. ตั้งค่าขาอุปกรณ์ (Pin Mapping)
 #define DHTPIN 4            // ขา Data ของเซนเซอร์ DHT22 (ต่อตัวต้านทาน Pull-up 10k)
 #define DHTTYPE DHT22       // ชนิดเซนเซอร์ DHT22
-#define SOIL_PIN 34         // ขา Analog ADC1 สำหรับอ่านเซนเซอร์ความชื้นในดิน
-#define RELAY_PIN 26        // ขาสำหรับสั่งงาน Relay ปั๊มน้ำ (Active LOW / HIGH)
+#define RELAY_PIN 26        // ขาสำหรับสั่งงาน Relay ระบบพ่นหมอก/พัดลม (Active LOW)
 
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -27,11 +26,11 @@ void setup() {
   Serial.begin(115200);
   
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, HIGH); // ปิดปั๊มน้ำไว้ก่อน (Relay Active LOW)
+  digitalWrite(RELAY_PIN, HIGH); // ปิดระบบพ่นหมอก/พัดลมไว้ก่อน (Relay Active LOW)
 
   dht.begin();
   
-  Serial.println("\n--- ESP32 Soil Moisture & DHT22 Client ---");
+  Serial.println("\n--- ESP32 DHT22 Air Climate Client ---");
   Serial.print("Connecting to WiFi: ");
   Serial.println(ssid);
   
@@ -41,43 +40,35 @@ void setup() {
     Serial.print(".");
   }
   
-  Serial.println("\n✅ WiFi Connected!");
+  Serial.println("\n✅ WiFi Connected Successfully!");
   Serial.print("ESP32 IP Address: ");
   Serial.println(WiFi.localIP());
 }
 
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
-    // 1. อ่านค่าจาก DHT22 (อุณหภูมิและความชื้นอากาศ)
+    // 1. อ่านค่าจากเซนเซอร์ DHT22 (อุณหภูมิและความชื้นในอากาศ)
     float temp = dht.readTemperature();
     float hum = dht.readHumidity();
 
-    // 2. อ่านค่าจากเซนเซอร์ความชื้นในดิน (Analog 0 - 4095)
-    int soilRaw = analogRead(SOIL_PIN);
-    
-    // ปรับเทียบค่าความชื้นในดินเป็น 0 - 100% 
-    // (หมายเหตุ: 4095 คือวัดในอากาศ/ดินแห้งสนิท, ~1500 คือแช่ในน้ำ/ดินเปียกชุ่ม)
-    float moisture = map(soilRaw, 4095, 1500, 0, 100);
-    moisture = constrain(moisture, 0, 100);
-
-    // ตรวจสอบความถูกต้องของค่า DHT22
+    // ตรวจสอบความถูกต้องของการอ่านค่า DHT22
     if (isnan(temp) || isnan(hum)) {
-      Serial.println("⚠️ Warning: Failed to read from DHT22 sensor!");
-      temp = 28.5; // ค่าสำรอง
-      hum = 60.0;
+      Serial.println("⚠️ Warning: Failed to read from DHT22 sensor! Retrying...");
+      delay(2000);
+      return;
     }
 
-    Serial.printf("\n[Sensor Read] Soil: %.1f%% (Raw: %d) | Temp: %.1f °C | Hum: %.1f %%\n", moisture, soilRaw, temp, hum);
+    Serial.printf("\n[DHT22 Read] Air Humidity: %.1f %% RH | Air Temperature: %.1f °C\n", hum, temp);
 
-    // 3. ส่งค่า JSON เข้า Backend API
+    // 2. สร้างข้อมูล JSON ส่งเข้า Cloud Server
     HTTPClient http;
     http.begin(serverUrl);
     http.addHeader("Content-Type", "application/json");
 
     StaticJsonDocument<256> doc;
     doc["sensor_id"] = "zone-1"; // ID ของโซนที่ต้องการส่งเข้า
-    doc["moisture"] = moisture;
-    doc["temperature"] = temp;
+    doc["moisture"] = hum;       // ความชื้นในอากาศ (%)
+    doc["temperature"] = temp;   // อุณหภูมิอากาศ (°C)
     doc["humidity"] = hum;
 
     String jsonPayload;
@@ -87,23 +78,23 @@ void loop() {
     
     if (httpCode > 0) {
       String response = http.getString();
-      Serial.printf("✅ HTTP POST Success (Code: %d)\n", httpCode);
+      Serial.printf("✅ Upload Cloud Success! (HTTP Code: %d)\n", httpCode);
       
-      // 4. อ่านคำสั่งสถานะปั๊มน้ำตอบกลับจากเซิร์ฟเวอร์
+      // 3. อ่านคำสั่งระบบพ่นหมอก/พัดลมตอบกลับจากเซิร์ฟเวอร์
       StaticJsonDocument<512> resDoc;
       DeserializationError err = deserializeJson(resDoc, response);
       if (!err) {
         const char* pumpStatus = resDoc["sensor"]["pump_status"];
         if (pumpStatus && String(pumpStatus) == "ON") {
-          digitalWrite(RELAY_PIN, LOW); // เปิดปั๊มน้ำ
-          Serial.println("💧 Pump Status: ON (Relay Triggered)");
+          digitalWrite(RELAY_PIN, LOW); // เปิดระบบพ่นหมอก/พัดลม
+          Serial.println("💨 Misting/Fan Status: ON (Relay Active)");
         } else {
-          digitalWrite(RELAY_PIN, HIGH); // ปิดปั๊มน้ำ
-          Serial.println("⚪ Pump Status: OFF");
+          digitalWrite(RELAY_PIN, HIGH); // ปิดระบบพ่นหมอก/พัดลม
+          Serial.println("⚪ Misting/Fan Status: OFF");
         }
       }
     } else {
-      Serial.printf("❌ HTTP POST Failed! Error: %s\n", http.errorToString(httpCode).c_str());
+      Serial.printf("❌ Upload Failed! Error: %s\n", http.errorToString(httpCode).c_str());
     }
     
     http.end();
@@ -112,5 +103,6 @@ void loop() {
     WiFi.reconnect();
   }
 
-  delay(3000); // อ่านและส่งข้อมูลทุกๆ 3 วินาที
+  // ส่งข้อมูลทุกๆ 5 วินาที
+  delay(5000);
 }
