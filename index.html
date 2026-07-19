@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบแสดงผลความชื้นในดิน เรียลไทม์ (Soil Moisture Dashboard)</title>
+  <meta name="description" content="ระบบแสดงผลและบันทึกค่าความชื้นในดินแบบเรียลไทม์ พร้อมแผงควบคุมปั๊มน้ำและ IoT Simulator">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <!-- Header / Navigation Bar -->
+  <header class="header-bar">
+    <div class="brand-logo">
+      <div class="brand-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"/>
+          <circle cx="12" cy="9" r="2.5"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="brand-title">Smart Moisture Pro</h1>
+        <p class="brand-sub">ระบบติดตามความชื้นในดินเรียลไทม์ & จัดเก็บข้อมูล</p>
+      </div>
+    </div>
+
+    <div class="connection-status">
+      <div id="statusDot" class="status-dot"></div>
+      <span id="statusText">กำลังเชื่อมต่อ...</span>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Zone Selector Tabs -->
+    <div class="zone-bar" id="zoneTabs">
+      <!-- Generated via JS -->
+    </div>
+
+    <!-- Main Dashboard Grid -->
+    <div class="dashboard-grid">
+      
+      <!-- Left Card: Real-time Moisture Gauge & Pump -->
+      <section class="glass-card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary-emerald)" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            ระดับความชื้นปัจจุบัน
+          </h2>
+          <span id="soilStatusBadge" class="status-pill OPTIMAL">OPTIMAL</span>
+        </div>
+
+        <!-- Animated SVG Circular Gauge -->
+        <div class="gauge-wrapper">
+          <svg class="gauge-svg" viewBox="0 0 100 60">
+            <defs>
+              <linearGradient id="gauge-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#ef4444" />
+                <stop offset="40%" stop-color="#10b981" />
+                <stop offset="80%" stop-color="#06b6d4" />
+                <stop offset="100%" stop-color="#3b82f6" />
+              </linearGradient>
+            </defs>
+            <!-- Background Arc -->
+            <path class="gauge-bg" d="M 10 50 A 40 40 0 0 1 90 50" />
+            <!-- Animated Value Fill Arc -->
+            <path id="gaugePath" class="gauge-fill" d="M 10 50 A 40 40 0 0 1 90 50" />
+          </svg>
+          <div class="gauge-text-group">
+            <div>
+              <span id="gaugeValue" class="gauge-value">--</span>
+              <span class="gauge-unit">%</span>
+            </div>
+            <div id="zoneLocationLabel" class="gauge-label">แปลงผักสวนครัว</div>
+          </div>
+        </div>
+
+        <!-- Metrics Mini Grid (Temp & Humidity) -->
+        <div class="metrics-mini-grid">
+          <div class="metric-card">
+            <div class="metric-icon temp">🌡️</div>
+            <div>
+              <div id="tempVal" class="metric-val">-- °C</div>
+              <div class="metric-lbl">อุณหภูมิดิน</div>
+            </div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-icon hum">💧</div>
+            <div>
+              <div id="humVal" class="metric-val">-- %</div>
+              <div class="metric-lbl">ความชื้นอากาศ</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Smart Water Pump Panel -->
+        <div class="pump-panel">
+          <div>
+            <div class="pump-info-title">ระบบปั๊มน้ำ (Irrigation Pump)</div>
+            <div id="pumpSubText" class="pump-info-title-sub">สถานะ: ปิดอยู่ (OFF)</div>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="pumpToggleBtn">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Right Card: Real-time Trend Chart -->
+      <section class="glass-card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary-cyan)" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            แนวโน้มความชื้นและอุณหภูมิ (Real-time Trend)
+          </h2>
+          <span style="font-size: 0.8rem; color: var(--text-dim);">อัปเดตอัตโนมัติ</span>
+        </div>
+
+        <div class="chart-container">
+          <canvas id="moistureChart"></canvas>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Statistics Summary Row -->
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-title">ความชื้นเฉลี่ย (Average)</div>
+        <div id="statAvg" class="stat-number">-- %</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-title">ค่าต่ำสุดวันนี้ (Min)</div>
+        <div id="statMin" class="stat-number" style="color: #ef4444;">-- %</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-title">ค่าสูงสุดวันนี้ (Max)</div>
+        <div id="statMax" class="stat-number" style="color: #3b82f6;">-- %</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-title">จำนวนการบันทึกทั้งหมด</div>
+        <div id="statTotal" class="stat-number" style="color: #f59e0b;">--</div>
+      </div>
+    </div>
+
+    <!-- Interactive Simulator & IoT Guide Grid -->
+    <div class="sub-grid">
+      
+      <!-- Simulator Box -->
+      <section class="glass-card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+            ตัวจำลองข้อมูลเซนเซอร์ (Built-in IoT Simulator)
+          </h2>
+        </div>
+
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px;">
+          ใช้สำหรับทดสอบการทำงานเรียลไทม์โดยไม่ต้องต่ออุปกรณ์ฮาร์ดแวร์จริง
+        </p>
+
+        <div class="sim-control-group">
+          <div class="sim-label">
+            <span>ปรับระดับความชื้นจำลอง:</span>
+            <span id="simMoistureVal">45.0%</span>
+          </div>
+          <input type="range" id="simMoistureRange" class="sim-range" min="5" max="98" value="45" step="0.5">
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;">
+          <button class="btn btn-secondary" onclick="setSimPreset(20)">☀️ แดดแรง (20%)</button>
+          <button class="btn btn-secondary" onclick="setSimPreset(55)">🌱 ชุ่มชื้น (55%)</button>
+          <button class="btn btn-secondary" onclick="setSimPreset(85)">🌧️ ฝนตก (85%)</button>
+        </div>
+
+        <div style="display: flex; gap: 12px;">
+          <button id="btnSendSimData" class="btn btn-primary">⚡ ส่งข้อมูล 1 ครั้ง</button>
+          <button id="btnToggleAutoSim" class="btn btn-secondary">🔄 Auto Loop (ทุก 3วิ): OFF</button>
+        </div>
+      </section>
+
+      <!-- Hardware ESP32 Integration Guide -->
+      <section class="glass-card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary-teal)" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+            การส่งข้อมูลจาก ESP32 / Arduino (IoT Backend API)
+          </h2>
+        </div>
+
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">
+          อุปกรณ์ IoT สามารถส่งค่าความชื้นผ่าน HTTP POST JSON มาที่ Backend ได้ทันที:
+        </p>
+
+        <div class="code-box" id="codeSnippetBox">POST http://localhost:3000/api/moisture
+Content-Type: application/json
+
+{
+  "sensor_id": "zone-1",
+  "moisture": 52.4,
+  "temperature": 29.5,
+  "humidity": 60.0
+}</div>
+
+        <div style="margin-top: 12px; display: flex; gap: 10px;">
+          <button class="btn btn-secondary" onclick="copyCurlExample()">📋 ก๊อปปี้ cURL</button>
+          <button class="btn btn-secondary" onclick="copyESP32Code()">💻 ก๊อปปี้โค้ด ESP32 (C++)</button>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Data Logs Table -->
+    <section class="glass-card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-main)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          ตารางบันทึกประวัติความชื้น (Backend Data Logs)
+        </h2>
+        <div style="display: flex; gap: 10px;">
+          <button class="btn btn-secondary" onclick="exportCSV()">📥 Export CSV</button>
+          <button class="btn btn-danger" onclick="clearLogs()">🗑️ ล้างประวัติ</button>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>วัน - เวลา (Timestamp)</th>
+              <th>โซน / เซนเซอร์</th>
+              <th>ค่าความชื้น (%)</th>
+              <th>อุณหภูมิ (°C)</th>
+              <th>ความชื้นอากาศ (%)</th>
+              <th>สถานะ (Status)</th>
+            </tr>
+          </thead>
+          <tbody id="logsTableBody">
+            <!-- Populated via JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast Notification System -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- App Script -->
+  <script src="app.js"></script>
+  <script src="simulator.js"></script>
+</body>
+</html>
